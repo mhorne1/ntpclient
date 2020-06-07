@@ -14,7 +14,19 @@
  *
  * Usage: $ ./ntpClient.out
  *
- */
+ *
+ * 
+ * MinGW version of NTP Client project by David Lettier
+ * 
+ * MinGW: A native Windows port of the GNU Compiler Collection (GCC)
+ * 
+ * Example for WSAStartup function call provided by:
+ * 
+ * https://docs.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-wsastartup
+ * 
+ * To compile for Windows: gcc main.c -o ntpClient.exe -lws2_32
+ * 
+ */ 
 
 #include <unistd.h>
 #include <stdio.h>
@@ -22,9 +34,8 @@
 #include <string.h>
 #include <time.h>
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
+#include <stdint.h>
+#include <winsock2.h>
 
 #define NTP_TIMESTAMP_DELTA 2208988800ull
 
@@ -47,6 +58,12 @@ int main( int argc, char* argv[ ] )
 
   char* host_name = "us.pool.ntp.org"; // NTP server host-name.
 
+  WORD wVersionRequested; // The highest version of the Windows Sockets specification that the application supports
+  
+  WSADATA wsaData; // WSADATA structure contains information about the Windows Sockets implementation.
+  
+  int WSAerr; // WSAStartup function returns zero if successful, otherwise it returns a Windows Sockets Error Code.
+  
   // Structure that defines the 48 byte NTP packet protocol.
 
   typedef struct
@@ -89,14 +106,26 @@ int main( int argc, char* argv[ ] )
 
   *( ( char * ) &packet + 0 ) = 0x1b; // Represents 27 in base 10 or 00011011 in base 2.
 
+  // Initiate use of the Winsock 2 DLL
+
+  wVersionRequested = MAKEWORD(2, 2); // Use the MAKEWORD(lowbyte, highbyte) macro declared in Windef.h
+
+  WSAerr = WSAStartup(wVersionRequested, &wsaData);
+  if (WSAerr != 0) {
+    /* Tell the user that we could not find a usable */
+    /* Winsock DLL.                                  */
+    printf("WSAStartup failed with error: %d\n", WSAerr);
+    return 1;
+    }
+
   // Create a UDP socket, convert the host-name to an IP address, set the port number,
   // connect to the server, send the packet, and then read in the return packet.
 
   struct sockaddr_in serv_addr; // Server address data structure.
   struct hostent *server;      // Server data structure.
-
+  
   sockfd = socket( AF_INET, SOCK_DGRAM, IPPROTO_UDP ); // Create a UDP socket.
-
+  
   if ( sockfd < 0 )
     error( "ERROR opening socket" );
 
@@ -107,13 +136,13 @@ int main( int argc, char* argv[ ] )
 
   // Zero out the server address structure.
 
-  bzero( ( char* ) &serv_addr, sizeof( serv_addr ) );
+  memset( ( char* ) &serv_addr, 0, sizeof( serv_addr ) );
 
   serv_addr.sin_family = AF_INET;
 
   // Copy the server's IP address to the server address structure.
 
-  bcopy( ( char* )server->h_addr, ( char* ) &serv_addr.sin_addr.s_addr, server->h_length );
+  memmove( ( char* ) &serv_addr.sin_addr.s_addr, ( char* )server->h_addr, server->h_length );
 
   // Convert the port number integer to network big-endian style and save it to the server address structure.
 
@@ -126,14 +155,14 @@ int main( int argc, char* argv[ ] )
 
   // Send it the NTP packet it wants. If n == -1, it failed.
 
-  n = write( sockfd, ( char* ) &packet, sizeof( ntp_packet ) );
+  n = send( sockfd, ( char* ) &packet, sizeof( ntp_packet ), 0 ); 
 
   if ( n < 0 )
     error( "ERROR writing to socket" );
 
   // Wait and receive the packet back from the server. If n == -1, it failed.
 
-  n = read( sockfd, ( char* ) &packet, sizeof( ntp_packet ) );
+  n = recv( sockfd, ( char* ) &packet, sizeof( ntp_packet ), 0 );
 
   if ( n < 0 )
     error( "ERROR reading from socket" );
@@ -155,6 +184,10 @@ int main( int argc, char* argv[ ] )
   // Print the time we got from the server, accounting for local timezone and conversion from UTC time.
 
   printf( "Time: %s", ctime( ( const time_t* ) &txTm ) );
+  
+  closesocket(sockfd); // Close socket
+  
+  WSACleanup(); // Terminate use of the Winsock 2 DLL
 
   return 0;
 }
