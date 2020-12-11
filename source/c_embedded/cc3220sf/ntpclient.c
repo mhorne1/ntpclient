@@ -28,15 +28,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-//#include <sys/types.h>
-//#include <sys/socket.h>
-//#include <netinet/in.h>
-//#include <netdb.h>
 #include <ti/drivers/net/wifi/simplelink.h>
 #include <ti/drivers/net/wifi/netapp.h>
 
-//#define NTP_TIMESTAMP_DELTA 2208988800ull
-#define NTP_TIMESTAMP_DELTA     (0)
+#define NTP_TIMESTAMP_DELTA     (0) // Offset from epoch; 2208988800ull
 
 #define LI(packet)   (uint8_t) ((packet.li_vn_mode & 0xC0) >> 6) // (li   & 11 000 000) >> 6
 #define VN(packet)   (uint8_t) ((packet.li_vn_mode & 0x38) >> 3) // (vn   & 00 111 000) >> 3
@@ -44,7 +39,7 @@
 
 #define CC32XX_SIMPLELINK       (1)
 
-    // Structure that defines the 48 byte NTP packet protocol.
+// Structure that defines the 48 byte NTP packet protocol.
 
 typedef struct
 {
@@ -106,14 +101,6 @@ volatile time_t g_txTm;        // Stores Transmit time-stamp seconds
 // EXTERNAL FUNCTIONS
 //****************************************************************************
 extern int Report(const char *pcFormat, ...);
-/*
-void error( char* msg )
-{
-    perror( msg ); // Print the error message to stderr.
-
-    exit( 0 ); // Quit the process.
-}
-*/
 
 /*
  * Get current UTC time from NTP time source
@@ -123,14 +110,12 @@ void error( char* msg )
  */
 time_t getNTPTime( void )
 {
-    //int sockfd, n;    // Socket file descriptor and the n return result from writing/reading from the socket.
     int16_t sockId;     // Socket file descriptor
     int n;              // Return result from writing/reading from the socket.
     int status;         // Stores socket connection status
     int portno = 123;   // NTP UDP port number.
     char* host_name = "us.pool.ntp.org"; // NTP server host-name.
     unsigned long DestinationIP; // host resolved from host_name
-    volatile time_t g_txTm;      // Stores Transmit time-stamp seconds
 
     // Create and zero out the packet. All 48 bytes worth.
 
@@ -152,50 +137,35 @@ time_t getNTPTime( void )
     struct hostent *server;         // Server data structure.
 #endif
 
-    //sockfd = socket( AF_INET, SOCK_DGRAM, IPPROTO_UDP ); // Create a UDP socket.
+    // Create a UDP socket.
     sockId = sl_Socket(SL_AF_INET,SL_SOCK_DGRAM, 0);
 
-    //if ( sockfd < 0 )
     if (sockId < 0) {
-        //error( "ERROR opening socket" );
         Report("ERROR opening socket\n\r");
     }
 
-    //server = gethostbyname( host_name ); // Convert URL to IP.
+    // Convert URL to IP.
     status = sl_NetAppDnsGetHostByName((signed char *)host_name,
                             strlen(host_name),
                             &DestinationIP,
                             SL_AF_INET);
 
-    //if ( server == NULL )
     if (status < 0) {
-        //error( "ERROR, no such host" );
         Report("ERROR, no such host\n\r");
     }
 
-    // Zero out the server address structure.
-
-    //bzero( ( char* ) &serv_addr, sizeof( serv_addr ) );
-
-    //serv_addr.sin_family = AF_INET;
     NTP_CB.ipV4Addr.sin_family = SL_AF_INET;
 
     // Copy the server's IP address to the server address structure.
 
-    //bcopy( ( char* )server->h_addr, ( char* ) &serv_addr.sin_addr.s_addr, server->h_length );
     NTP_CB.ipV4Addr.sin_addr.s_addr = sl_Htonl(DestinationIP);
 
     // Convert the port number integer to network big-endian style and save it to the server address structure.
 
-    //serv_addr.sin_port = htons( portno );
     NTP_CB.ipV4Addr.sin_port = sl_Htons(portno);
 
     // Call up the server using its IP address and port number.
 
-    /*
-    if ( connect( sockfd, ( struct sockaddr * ) &serv_addr, sizeof( serv_addr) ) < 0 )
-       error( "ERROR connecting" );
-    */
     status = sl_Connect(sockId,
                         ( SlSockAddr_t *)&NTP_CB.ipV4Addr,
                         sizeof(SlSockAddrIn_t));
@@ -205,7 +175,6 @@ time_t getNTPTime( void )
 
     // Send it the NTP packet it wants. If n == -1, it failed.
 
-    //n = write( sockfd, ( char* ) &packet, sizeof( ntp_packet ) );
     n = sl_SendTo(sockId,
                 &packet,
                 sizeof( ntp_packet ),
@@ -214,20 +183,17 @@ time_t getNTPTime( void )
                 sizeof(SlSockAddrIn_t));
 
     if (n < 0) {
-        //error( "ERROR writing to socket" );
         Report("ERROR writing to socket\n\r");
     }
 
     // Wait and receive the packet back from the server. If n == -1, it failed.
 
-    //n = read( sockfd, ( char* ) &packet, sizeof( ntp_packet ) );
     n = sl_Recv(sockId,
               &packet,
               sizeof( ntp_packet ),
               0);
 
     if ( n < 0 ) {
-      //error( "ERROR reading from socket" );
       Report("ERROR reading from socket\n\r");
     }
 
@@ -235,9 +201,7 @@ time_t getNTPTime( void )
     // The number of seconds correspond to the seconds passed since 1900.
     // ntohl() converts the bit/byte order from the network's to host's "endianness".
 
-    //packet.txTm_s = ntohl( packet.txTm_s ); // Time-stamp seconds.
     packet.txTm_s = sl_Ntohl( packet.txTm_s ); // Time-stamp seconds.
-    //packet.txTm_f = ntohl( packet.txTm_f ); // Time-stamp fraction of a second.
     packet.txTm_f = sl_Ntohl( packet.txTm_f ); // Time-stamp fraction of a second.
 
     // Extract the 32 bits that represent the time-stamp seconds (since NTP epoch) from when the packet left the server.
@@ -245,16 +209,13 @@ time_t getNTPTime( void )
     // This leaves the seconds since the UNIX epoch of 1970.
     // (1900)------------------(1970)**************************************(Time Packet Left the Server)
 
-    //time_t txTm = ( time_t ) ( packet.txTm_s - NTP_TIMESTAMP_DELTA );
     g_txTm = ( time_t ) ( packet.txTm_s - NTP_TIMESTAMP_DELTA );
 
     // Print the time we got from the server, accounting for local timezone and conversion from UTC time.
 
-    //printf( "Time: %s", ctime( ( const time_t* ) &txTm ) );
-    //Report("%sn\r", ctime( ( const time_t* ) &g_txTm ));
+    Report("%sn\r", ctime( ( const time_t* ) &g_txTm ));
 
     status = sl_Close(sockId);
 
-    //return 0;
     return g_txTm;
 }
