@@ -1,1 +1,0 @@
-Project_CC3220SF_LAUNCHXL_nortos_ccs.launch
